@@ -1,0 +1,137 @@
+############## Ames GBS filtering for imputation
+
+### get line list from gbs_raw dataset
+# line call rate
+nohup ~/src/plink --vcf  ZeaGBSv27_publicSamples_raw_AGPv4-181023.vcf.gz   --double-id  --missing --out gbs_v2.7_raw > gbs_v2.7_raw_missing.log &
+
+# extract individuals
+nohup vcftools  --gzvcf  ZeaGBSv27_publicSamples_raw_AGPv4-181023.vcf.gz  --keep  ames_1493_v2.7_all.txt  --recode --out ames_1779  > ames_1779_extract.log &
+
+# filter out multiple allelic snps and convert to bed file
+nohup ~/src/plink --vcf ames_1779.recode.vcf --biallelic-only 'strict' --make-bed --out ames_1779 > ames_1779_biallelic.log &   ### 787596 variants and 1779 people pass filters and QC.
+
+# remove monomorphic SNPs
+nohup ~/src/plink --bfile ames_1779  --maf 0.00001 --make-bed --out raw_remono > raw_remono.log &   ### 451319 variants and 1779 people pass filters and QC.
+
+###### statistics
+# i_missing and l_missing
+nohup ~/src/plink --bfile raw_remono --missing --out raw_remono > raw_remono_missing.log &
+# i_het
+nohup ~/src/plink --bfile raw_remono --het --out raw_remono > raw_remono_i_het.log &
+# freq
+nohup ~/src/plink --bfile raw_remono --freq --out raw_remono > raw_remono_freq.log &
+nohup ~/src/plink --bfile raw_remono --freq --counts --out raw_remono > raw_remono_freq_counts.log &
+# l_het
+nohup ~/src/plink --bfile raw_remono --hardy --out raw_remono > raw_remono_l_het.log &
+
+###### individual statistics
+# i_miss
+awk '{print $1,$6}' raw_remono.imiss > i_miss
+# i_het
+awk '{print $1,$3,$5,$6}' raw_remono.het > i_het
+paste i_miss i_het > raw_remono_individual_sta.txt
+
+###### snp statistics
+# l_missing
+awk '{print $2,$5}' raw_remono.lmiss > l_miss
+# l_het
+awk '{print $2,$7,$8}' raw_remono.hwe > l_het
+# l_maf
+awk '{print $2,$5}' raw_remono.frq > l_maf
+paste l_miss l_het l_maf > raw_remono_snp_sta.txt
+
+# keep lines with a call rate >= 20%
+nohup ~/src/plink  --bfile raw_remono --mind 0.8 --make-bed --out raw_remono_mind0.8 > raw_remono_mind0.8.log &   ### 451319 variants and 1754 people pass filters and QC.
+
+# keep SNPs with a call rate >= 50%
+nohup ~/src/plink  --bfile raw_remono_mind0.8 --geno 0.5 --make-bed --out raw_remono_mind0.8_geno0.5 > raw_remono_mind0.8_geno0.5.log &   ### 128206 variants and 1754 people pass filters and QC.
+
+# keep SNPs with Het <= 10%
+nohup ~/src/plink --bfile raw_remono_mind0.8_geno0.5 --hardy --out raw_remono_mind0.8_geno0.5 > raw_remono_mind0.8_geno0.5_l_het.log &
+sort -rn -k7 raw_remono_mind0.8_geno0.5.hwe | head -n  50
+awk '(NR>1) && ($7 > 0.1 ) ' raw_remono_mind0.8_geno0.5.hwe | awk '{print $2}' > raw_remono_mind0.8_geno0.5_l_het_gt0.1.txt
+nohup ~/src/plink  --bfile raw_remono_mind0.8_geno0.5 --exclude raw_remono_mind0.8_geno0.5_l_het_gt0.1.txt --make-bed --out raw_remono_mind0.8_geno0.5_lhet0.1 > raw_remono_mind0.8_geno0.5_lhet0.1.log &
+# 128134 variants and 1754 people pass filters and QC.
+
+# keep SNPs with FIT >= 0.8
+nohup ~/src/plink --bfile raw_remono_mind0.8_geno0.5_lhet0.1 --hardy --out raw_remono_mind0.8_geno0.5_lhet0.1 > raw_remono_mind0.8_geno0.5_lhet0.1_l_het.log &
+
+# get snps with Fit < 0.8 in R
+dat <- read.table("raw_remono_mind0.8_geno0.5_lhet0.1.hwe", header=TRUE, as.is=TRUE)
+head(dat)
+dat <- dat[,c(2,7,8)]
+dat$Fit <- 1- dat$O.HET./dat$E.HET.
+dat_e <- dat[which(dat$Fit < 0.8),]
+write.table(dat_e$SNP,"raw_remono_mind0.8_geno0.5_lhet0.1_fit_lt0.8.txt",quote = F,row.names = F,col.names = F)
+nohup ~/src/plink  --bfile raw_remono_mind0.8_geno0.5_lhet0.1 --exclude raw_remono_mind0.8_geno0.5_lhet0.1_fit_lt0.8.txt --make-bed --out raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8 > raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8.log &
+### 124795 variants and 1754 people pass filters and QC.
+
+# keep SNPs with MAF >= 0.01
+nohup ~/src/plink  --bfile raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8 --maf 0.01 --make-bed --out raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8_maf0.01 > raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8_maf0.01.log &
+### 104146 variants and 1754 people pass filters and QC.
+
+### LD pruning
+nohup ~/src/plink  --bfile raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8_maf0.01 --indep-pairwise 100 25 0.2  --out pruning > pruning.log &
+nohup ~/src/plink  --bfile raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8_maf0.01 --extract pruning.prune.in --make-bed --out raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8_maf0.01_pruned > raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8_maf0.01_pruned.log &
+### 32267 variants and 1754 people pass filters and QC.
+
+### calculate ibs matrix
+nohup ~/src/plink  --bfile raw_remono_mind0.8_geno0.5_lhet0.1_fit0.8_maf0.01_pruned --id-delim ':' --distance square0 'ibs' --out dup_1754_32267_ibs > dup_1754_32267_ibs.log &
+
+#######################################################  consensus analysis
+# pwd: /workdir/xl743/ve/ames_locked_hmp/for_consensus
+# extract combined entries
+nohup vcftools  --vcf   ames_1801.recode.vcf  --keep  ames_1493_v2.7_all_single_1273_plus_consensus_441.txt --recode --out ames_1493_v2.7_all_single_1273_plus_consensus_441  > ames_1493_v2.7_all_single_1273_plus_consensus_441.log &
+
+# retain biallelic snps
+nohup vcftools  --vcf  ames_1493_v2.7_all_single_1273_plus_consensus_441.recode.vcf  --min-alleles 2 --max-alleles 2  --recode --out ames_1493_v2.7_all_single_1273_plus_consensus_441_biallelic  > ames_1493_v2.7_all_single_1273_plus_consensus_441_biallelic.log &   
+### After filtering, kept 691970 out of a possible 943455 Sites
+
+# maf 0.00001
+nohup vcftools  --vcf  ames_1493_v2.7_all_single_1273_plus_consensus_441_biallelic.recode.vcf  --maf 0.00001 --recode --out ames_1493_v2.7_all_single_1273_plus_consensus_441_biallelic_maf0.00001  > ames_1493_v2.7_all_single_1273_plus_consensus_441_biallelic_maf0.00001.log &   
+### After filtering, kept 448553 out of a possible 691970 Sites
+
+# make consensus call
+python 4.consensus_call_Ames.py -i ames_1493_v2.7_all_single_1273_plus_consensus_441_biallelic_maf0.00001.recode.vcf -o ames_raw_1273_plus_441_consensus.vcf -f ames_1493_v2.7_all_single_1273_plus_consensus_441_key.txt
+
+#################################################### Pre-imputation samples and SNP filtering
+# pwd: /workdir/xl743/ve/ames_locked_hmp/for_consensus
+
+# filter out multiple allelic snps AGAIN and convert to bed file
+nohup ~/src/plink --vcf ames_raw_1273_plus_441_consensus.vcf --biallelic-only 'strict' --make-bed --out ames_raw_1273_plus_441_consensus_biallelic > ames_raw_1273_plus_441_consensus_biallelic.log &
+### 448553 variants and 1474 people pass filters and QC.
+
+# retain samples with call rate >= 20%
+nohup ~/src/plink  --bfile ames_raw_1273_plus_441_consensus_biallelic --mind 0.8 --make-bed --out ames_raw_1273_plus_441_consensus_biallelic_mind0.8 > ames_raw_1273_plus_441_consensus_biallelic_mind0.8.log &
+# 448553 variants and 1464 people pass filters and QC.
+
+# keep samples with Het <= 10%
+nohup ~/src/plink --bfile ames_raw_1273_plus_441_consensus_biallelic_mind0.8 --het --out ames_raw_1273_plus_441_consensus_biallelic_mind0.8 > ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het.log &
+
+# calculate i_het in R
+dat <- read.table("ames_raw_1273_plus_441_consensus_biallelic_mind0.8.het", header=TRUE, as.is=TRUE)
+head(dat)
+dat <- dat[,c(1,3,4,5,6)]
+dat$i_het <- (dat$N.NM.-dat$O.HOM.)/dat$N.NM.
+plot(dat$F~dat$i_het)
+cor(dat$F,dat$i_het)
+dat_e <- dat[which(dat$i_het > 0.1),] # <0 rows>, all 1464 lines with i_het < 0.1
+
+# keep samples with F >= 0.8
+dat_e <- dat[which(dat$F < 0.8),]
+dat_e$FID2 <- dat_e$FID
+write.table(dat_e[,c(1,7)],"ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het0.1_F_lt0.8.txt",quote = F,row.names = F,col.names = F)
+nohup ~/src/plink  --bfile ames_raw_1273_plus_441_consensus_biallelic_mind0.8  --remove ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het0.1_F_lt0.8.txt --make-bed --out ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het0.1_F0.8 > ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het0.1_F0.8.log &
+
+# maf 0.00001
+nohup ~/src/plink  --bfile ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het0.1_F0.8 --maf 0.00001 --make-bed --out ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het0.1_F0.8_maf0.00001 > ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het0.1_F0.8_maf0.00001.log &
+# 443419 variants and 1462 people pass filters and QC.
+
+### Di's imputation pipeline NOT work with .vcf that converted from .bed
+
+### subseting desired samples and snps from "ames_raw_1273_plus_441_consensus.vcf"
+nohup ~/src/plink --bfile ames_raw_1273_plus_441_consensus_biallelic_mind0.8_i_het0.1_F0.8_maf0.00001 --missing --out ready_for_imputation > ready_for_imputation_missing.log &
+nohup vcftools  --vcf  ames_raw_1273_plus_441_consensus.vcf  --keep  ready_for_imputation_samples.txt  --snps ready_for_imputation_snps.txt --recode --out ames_raw_1462_443419_consensus  > ames_raw_1462_443419_consensus_extract.log &
+
+pwd: /workdir/xl743/ve/ames_locked_hmp/for_consensus/ames_raw_1462_443419_consensus.recode.vcf   ### for hmp3 imputation use
+

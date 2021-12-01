@@ -1,0 +1,193 @@
+#README_Wrapper_with_boxcox
+#############################
+### Input Data structure: ###
+#############################
+
+The order of the columns does not matter as long as:
+the field design, genocode, other information are in first columns
+and the traits (phenotypes) are in the last columns.
+E.g. the 5 first columns of the input file are Genotype, Year, Env, Row, Col
+Then, columns 6 to n are phenotypes (Yield, Height etc).
+The trait name in the header will be used to create object names in the script,
+so use names without spaces or special characters. E.g.
+BAD name:  %chloro (mg.cm-2)
+GOOD name: percent_chloro
+Input should be sorted by the higher level of organization in the field,
+# then the second highest level of organization etc.
+E.g. Env, then Rep, then Row then Col (within Env we have Reps, and within Reps we have cols and rows)
+DATA SHOULD BE TAB SEPARATED, *NOT* COMMA SEPARATED.
+
+#### If using an augmented design:
+
+The wrapper expects to find two columns called "CHECK" and "IS_EXPERIMENTAL".
+
+"CHECK" is a numeric column used to discriminate check entries by genotype.
+All check entries of the same genotype should have the same value,
+and each different check genotype should have different and unique values.
+So if you use 2 different genotypes as checks (e.g. PI2000 and PI4567), you should have all the checks from the genotype PI2000 called 1 for example,
+all the checks from genotype PI4567 called 2.
+All non-check entries should have a uniform, placeholder value (e.g. -1 or 99 etc).
+
+"IS_EXPERIMENTAL" is a binary column, where each check entry should have a 0 (ZERO)
+and each experimental entry should have a 1 (ONE).
+The value 0 for checks is IMPORTANT, don't use another value.
+####
+
+
+#############################
+##### Model Terms file: #####
+#############################
+
+To run, the wrapper read the info of the model in a "model term" file
+This file should have following structure:
+
+(a) fixed =
+(b) random =
+(c) nb_design_variables =
+(d) nb_traits =
+(e) predict =
+(f) nested_terms =
+(g) variance_component_terms =
+(h) best_linear_unbiased_model =
+(i) variable_name_for_genotypes =
+(j) baseline_model =
+(k) augmented =
+
+where:
+
+(a) fixed is the name of the fixed effects. If there no fixed effect, just leave "fixed = " with empty values
+
+(b) random is the name of the random effects.
+These effects should be spelt exactly as there are indicated in the header of the input file.
+The spelling is case sensitive.
+IMPORTANT: Model terms are separated by a SPACE character, *NOT A COMMA*.
+(e.g. fixed = Genotype Year (not, fixed = Genotype, Year)
+Interactions are noted with a colon. (random = Env:Rep, see example below)
+
+(c) nb_design_variables is the number of columns before your traits of interest. Write the
+whole number of columns, even if some of these columns are irrelevant to the analysis.
+For example, if the input file has 6 columns,
+with col1=Genocode, col2="DNA extraction performed by john", col3=block, col4=row, col5=yield, col6=height,
+then nb_design_variables is 4, even if only 3 are relevant for your analysis
+
+(d) nb_traits is the number of traits for which we want to run the model. In the example above, it would be 2 (yield, height).
+
+(e) predict is the name of the trait we want the BLUEs or BLUPS for. Spelling and case sensitivity should match the input file header.
+In the example above, it should be Genotype.
+
+(f) nested_terms is the list of terms that are NOT defined as an interaction but nested within another term.
+If B is nested in A, then the model will specify A + A:B, and if A:B is significant, then A has to be kept in the final model.
+On the contrary, if A and B are interacting, the model will specify A + B + A:B and if A:B is retained, either A or B or both can still
+be dropped from the final model.
+
+(g) variance_component_terms are the terms in the model for which the wrapper will calculate the variance component.
+Generally, these are the Genotype terms and all the terms that involve an interaction with Genotype.
+
+(h) best_linear_unbiased_model can take either of two values: "BLUPS" or "BLUES".
+Use only these two terms, with this EXACT SPELLING (all letters capitalized) but not quotation mark
+
+(i) variable_name_for_genotypes is the header of the column with genotypes (sometimes people call them "entry", or "samples", or "genocode")
+
+(j) baseline model is the simple model used for the boxcox transformation. Note that the boxcox is a simple linear model (no random effects),
+even if you use random effect terms later on to do the model selection and calculate the BLUPs.
+There is no need for excessive precision to see how the data are distributed, so a simple model is sufficient.
+For example, you can use your full model and just remove all the interactions.
+
+(k) a boolean variable taking either of two values: "TRUE" or "FALSE"
+Set this to TRUE if using an augmented design with checks. If so, the wrapper expects to find columns labeled "CHECK" and "IS_EXPERIMENTAL".
+
+##################
+# A full example #
+##################
+
+fixed =
+random = Genocode Genocode:Env Env Env:Rep Env:Rep:Row Env:Rep:Col
+nb_design_variables = 6
+nb_traits = 4
+predict = Genocode
+nested_terms = Env:Rep Env:Rep:Row Env:Rep:Col
+variance_component_terms = Genocode Genocode:Env
+best_linear_unbiased_model = BLUPS
+variable_name_for_genotypes = Genocode
+baseline_model = Genocode Env
+augmented = FALSE
+
+All 11 lines are needed. If there are no fixed effects for example, just leave the term empty (as shown just above), but don't remove the line.
+
+
+#############################
+#### To run the script ######
+#############################
+
+Open the wrapper and manually indicate:
+1) THE FULL PATH TO THE RESULT FOLDER ; this will be the directory inside which subdirectories will be generated; the wrapper creates one folder per trait
+For Windows user, use \\ in the path description, not forward slash. E.g. C:\\user\\myfolder\\myresults\\
+Do not forget the \\ at the end of the path.
+2) THE PATH OF THE INPUT FILE (with its full path if it's not in the same location as the wrapper)
+3) THE NAME OF THE INPUT FILE (will be re-used to generate a new infile without outliers (called "cleaned_<INFILE>")
+4) THE NAME OF THE MODEL TERM FILE (with its full path if it's not in the same location as the wrapper)
+
+The user can also change the path to where the different functions are located.
+
+NO INPUT USER IS NEEDED below the line marked "BELOW, DO NOT TOUCH".
+
+
+#####################################
+## Steps and output files produced ##
+#####################################
+
+##### BoxCox transformation #######
+
+Using a very basic model, the wrapper will evaluate if the trait is normally distributed.
+If not, it will try to transform the data to better fit a normal distribution.
+
+This step will output 4 files:
+- a pdf with the best lambda value, the convenient lambda closest to the best lambda (value actually used),
+the distribution of the data before and after transformation and the deviation from a normal distribution.
+Lambda = 1 means no transformation, so the old and new distributions are identical. (<trait>_Distrib_after_Box_plot.pdf)
+- a pdf with the fit according to a range of various lambda (lambda_values.pdf)
+- a file summarizing all transformations applied to all the traits (boxcox_transformation_applied_<INPUT>.txt)
+- a copy of the input file except that all the real, original values are transformed, if transformation was applied (transformed_<INPUT>.txt)
+
+
+##### Outlier removal #######
+
+Does several iterations until there is no outlier.
+Each time one data point is removed, the distribution of the other ones and the significance threshold changes.
+Significance is assessed by a test on studentized residuals.
+
+This step will output 3 files:
+- a copy of the input file where all the outliers were replaced by NA (cleaned_<INFILE>.txt)
+- a pdf (for each trait) showing the distribution of the data with outliers noted in red and horizontal lines
+indicating the significance threshold. (outlier_<trait>_iterations.pdf)
+- a text file (for each trait) returning the value of the studentized residual and whether it passed or not the
+significance threshold in any of the iterations. (residuals_<trait>.txt)
+
+
+##### Model fitting #######
+
+Will fit either BLUPS or BLUEs, and perform model simplication, dropping one term at a time.
+
+This step will output 6 files:
+- a text file reporting the best model (Best_model_<trait>)
+- a text file reporting the BLUES or BLUPS (BLUES_<trait> or BLUPS_<trait>)
+Note that with BLUPS, the file returns the predictor for all the terms. The user may need to clean it for downstream use in GWAS,
+and keep the predictors for the Genotypes only.
+- a pdf (for each trait) showing the distribution of the data with residuals. (<trait>.pdf)
+- 2 pdf showing the distribution of the BLUPs or BLUEs. (Histplot_<trait>.pdf and Boxplot_<trait>.pdf)
+- a pdf showing the distribution of the BLUPs or BLUEs against a normal distribution. (QQplot_<trait>.pdf and Boxplot_<trait>.pdf)
+
+In addition, to returning these files, the wrapper keeps each best model full detail in an object called bm.
+This object can be accessed in your shell.
+For example, for trait Yield, typing bm_Yield$model or bm_Yield$best.model will return all the details
+of the model fitting for yield.
+Accessing bm_Trait$model should be unnecessary in most cases and for most users.
+
+
+##### Heritability #######
+
+The wrapper will also calculate the heritability for all the traits.
+
+This step will output 2 files:
+- the harmonic mean values used for calculation of heritability, for each trait. (HM_<INPUT>.txt)
+- the heritability for each trait. (Heritability_<INPUT>.txt)

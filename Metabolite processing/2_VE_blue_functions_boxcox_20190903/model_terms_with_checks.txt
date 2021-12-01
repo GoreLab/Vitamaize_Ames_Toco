@@ -1,0 +1,11 @@
+fixed = CHECK CHECK:GENOTYPE
+random = CHECK:YEAR CHECK:YEAR:GENOTYPE:IS_EXPERIMENTAL YEAR YEAR:TIER YEAR:TIER:New_Block_Pass YEAR:TIER:New_Block_Range YEAR:PLATE
+nb_design_variables = 8
+nb_traits = 9
+predict = CHECK:GENOTYPE
+nested_terms = YEAR:TIER YEAR:TIER:New_Block_Pass YEAR:TIER:New_Block_Range YEAR:PLATE
+variance_component_terms = CHECK:GENOTYPE CHECK:YEAR:GENOTYPE:IS_EXPERIMENTAL
+best_linear_unbiased_model = BLUES
+variable_name_for_genotypes = GENOTYPE
+baseline_model = NA
+augmented = TRUE

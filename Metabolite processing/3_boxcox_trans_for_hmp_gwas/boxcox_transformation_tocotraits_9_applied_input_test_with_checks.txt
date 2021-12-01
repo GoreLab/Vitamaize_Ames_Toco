@@ -1,0 +1,10 @@
+Trait	Lambda	Transformed
+d.T3	0	YES
+g.T3	0.5	YES
+a.T3	0.5	YES
+d.T	0.5	YES
+g.T	0.5	YES
+a.T	0.5	YES
+Total.Tocotrienols	0	YES
+Total.Tocopherols	0.5	YES
+Total.Tocochromanols	0.5	YES
